@@ -2,3 +2,5 @@ node_modules
 dist
 .env
 sync-main.sh
+CLAUDE.md
+.history/
