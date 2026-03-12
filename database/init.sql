@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   email             VARCHAR(150) NOT NULL UNIQUE,
   telefono          VARCHAR(15)  NOT NULL UNIQUE,
   password_hash     VARCHAR(255) NOT NULL,
-  pin               VARCHAR(255) NOT NULL,
+  pin               VARCHAR(255) NULL,
   foto_url          VARCHAR(500) NULL,
   biometria_activa  BOOLEAN      NOT NULL DEFAULT FALSE,
   estado            ENUM('activo','bloqueado','inactivo') NOT NULL DEFAULT 'activo',
