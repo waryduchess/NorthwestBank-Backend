@@ -40,20 +40,21 @@ const router = Router();
  *         description: Email o telefono ya registrado
  */
 router.post('/registro', async (req: Request, res: Response) => {
-  const { nombre, apellido_paterno, apellido_materno, email, telefono, password, pin } = req.body;
+  console.log('Body recibido:', req.body);
+  const { nombre, apellido_paterno, apellido_materno, email, telefono, password} = req.body;
 
-  if (!nombre || !apellido_paterno || !apellido_materno || !email || !telefono || !password || !pin) {
+  if (!nombre || !apellido_paterno || !apellido_materno || !email || !telefono || !password) {
     res.status(400).json({ mensaje: 'Todos los campos son requeridos' });
     return;
   }
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const pinHash = await bcrypt.hash(pin, 10);
+  
 
     const [result]: any = await pool.query(
       'INSERT INTO usuarios (nombre, apellido_paterno, apellido_materno, email, telefono, password_hash, pin) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [nombre, apellido_paterno, apellido_materno, email, telefono, passwordHash, pinHash]
+      [nombre, apellido_paterno, apellido_materno, email, telefono, passwordHash, null]
     );
 
     res.status(201).json({ mensaje: 'Usuario registrado exitosamente', id: result.insertId });
