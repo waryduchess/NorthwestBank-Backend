@@ -12,8 +12,6 @@ const PREFIJOS_CREDITO: Record<string, string> = {
   imperium: '4030',
 };
 
-const PREFIJO_POR_TIPO_CREDITO = PREFIJOS_CREDITO;
-
 function generarNumero(prefijo: string): string {
   let resto = '';
   for (let i = 0; i < 12; i++) {
@@ -22,76 +20,17 @@ function generarNumero(prefijo: string): string {
   return prefijo + resto;
 }
 
-function generarNumeroDebito(): string {
-  const prefijos = ['4030', '4040'];
-  const prefijo = prefijos[Math.floor(Math.random() * prefijos.length)];
-  return generarNumero(prefijo);
-}
-
 function generarCVV(): string {
   return Math.floor(100 + Math.random() * 900).toString();
 }
 
 function generarFechaExpiracion(): string {
   const hoy = new Date();
-  const anios = 3 + Math.floor(Math.random() * 3); // entre 3 y 5 años
+  const anios = 3 + Math.floor(Math.random() * 3);
   const mes = Math.floor(1 + Math.random() * 12);
   const anio = hoy.getFullYear() + anios;
   return `${mes.toString().padStart(2, '0')}/${anio.toString().slice(-2)}`;
 }
-
-/**
- * @swagger
- * /api/tarjetas/generar-debito:
- *   get:
- *     summary: Generar datos aleatorios para una tarjeta de débito
- *     description: Retorna número de tarjeta (prefijo 4030 o 4040), CVV y fecha de expiración generados aleatoriamente. Estos datos deben usarse en POST /api/tarjetas para registrar la tarjeta.
- *     tags: [Tarjetas]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Datos generados exitosamente
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 numero_tarjeta:
- *                   type: string
- *                   example: "4030481923746152"
- *                 cvv:
- *                   type: string
- *                   example: "382"
- *                 fecha_expiracion:
- *                   type: string
- *                   example: "08/29"
- *                 tipos_disponibles:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: integer
- *                       nombre:
- *                         type: string
- */
-router.get('/generar-debito', verificarToken, async (_req: AuthRequest, res: Response) => {
-  try {
-    const [tipos]: any = await pool.query(
-      "SELECT id, nombre FROM tipos_tarjeta WHERE categoria = 'debito'"
-    );
-
-    res.json({
-      numero_tarjeta: generarNumeroDebito(),
-      cvv: generarCVV(),
-      fecha_expiracion: generarFechaExpiracion(),
-      tipos_disponibles: tipos,
-    });
-  } catch {
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
-  }
-});
 
 /**
  * @swagger
@@ -208,9 +147,9 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *   post:
  *     summary: Registrar una tarjeta (débito o crédito)
  *     description: |
- *       Registra una tarjeta usando los datos generados por los endpoints de generación.
- *       - Débito (Nexus/Vertex): prefijo 4030 o 4040
- *       - Orbe: prefijo 4010 | Silverstone: prefijo 4020 | Imperium: prefijo 4030
+ *       Registra una tarjeta en la cuenta indicada.
+ *       - Débito (Nexus/Vertex): el usuario ingresa el número manualmente, debe iniciar con 4030 o 4040.
+ *       - Orbe: prefijo 4010 | Silverstone: prefijo 4020 | Imperium: prefijo 4030.
  *     tags: [Tarjetas]
  *     security:
  *       - bearerAuth: []
@@ -253,6 +192,16 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
   }
 
   try {
+    // Verificar que el número no esté ya registrado
+    const [existente]: any = await pool.query(
+      'SELECT id FROM tarjetas WHERE numero_tarjeta = ?',
+      [numero_tarjeta]
+    );
+    if (existente.length > 0) {
+      res.status(409).json({ mensaje: 'El número de tarjeta ya está registrado' });
+      return;
+    }
+
     // Obtener el tipo de tarjeta
     const [tipos]: any = await pool.query(
       'SELECT id, nombre, categoria FROM tipos_tarjeta WHERE id = ?',
@@ -273,7 +222,7 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
         return;
       }
     } else {
-      const prefijoEsperado = PREFIJO_POR_TIPO_CREDITO[tipo.nombre.toLowerCase()];
+      const prefijoEsperado = PREFIJOS_CREDITO[tipo.nombre.toLowerCase()];
       if (prefijo !== prefijoEsperado) {
         res.status(400).json({
           mensaje: `Tarjeta ${tipo.nombre} debe iniciar con ${prefijoEsperado}`,
@@ -304,11 +253,7 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
       tipo: tipo.nombre,
       categoria: tipo.categoria,
     });
-  } catch (err: any) {
-    if (err.code === 'ER_DUP_ENTRY') {
-      res.status(409).json({ mensaje: 'El número de tarjeta ya está registrado' });
-      return;
-    }
+  } catch {
     res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 });
