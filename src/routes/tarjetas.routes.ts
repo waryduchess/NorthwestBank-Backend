@@ -25,6 +25,10 @@ function generarCVV(): string {
   return Math.floor(100 + Math.random() * 900).toString();
 }
 
+function generarNIP(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
 function generarFechaExpiracion(): string {
   const hoy = new Date();
   const anios = 3 + Math.floor(Math.random() * 3);
@@ -76,6 +80,9 @@ function generarFechaExpiracion(): string {
  *                 limite_credito:
  *                   type: number
  *                   nullable: true
+ *                 nip:
+ *                   type: string
+ *                   example: "4823"
  *       400:
  *         description: Tipo inválido
  */
@@ -122,6 +129,7 @@ router.get('/generar-credito', verificarToken, async (req: AuthRequest, res: Res
       numero_tarjeta,
       cvv: generarCVV(),
       fecha_expiracion: generarFechaExpiracion(),
+      nip: generarNIP(),
       tipo_tarjeta_id: tipoDB.id,
       nombre: tipoDB.nombre,
       limite_credito: tipoDB.limite_credito,
