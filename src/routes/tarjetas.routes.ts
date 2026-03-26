@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import bcrypt from 'bcrypt';
 import { verificarToken, AuthRequest } from '../middleware/auth.middleware';
 import pool from '../db/connection';
 
@@ -178,7 +179,7 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion]
+ *             required: [cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip]
  *             properties:
  *               cuenta_id:
  *                 type: integer
@@ -195,6 +196,10 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *                 type: string
  *                 description: Formato MM/YY
  *                 example: "03/30"
+ *               nip:
+ *                 type: string
+ *                 description: 4 dígitos numéricos
+ *                 example: "1234"
  *     responses:
  *       201:
  *         description: Tarjeta registrada exitosamente
@@ -206,10 +211,10 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *         description: Número de tarjeta ya registrado
  */
 router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
-  const { cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion } = req.body;
+  const { cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip } = req.body;
 
-  if (!cuenta_id || !tipo_tarjeta_id || !numero_tarjeta || !cvv || !fecha_expiracion) {
-    res.status(400).json({ mensaje: 'cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv y fecha_expiracion son requeridos' });
+  if (!cuenta_id || !tipo_tarjeta_id || !numero_tarjeta || !cvv || !fecha_expiracion || !nip) {
+    res.status(400).json({ mensaje: 'cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion y nip son requeridos' });
     return;
   }
 
@@ -225,6 +230,11 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
 
   if (!/^\d{2}\/\d{2}$/.test(fecha_expiracion)) {
     res.status(400).json({ mensaje: 'La fecha de expiración debe tener formato MM/YY' });
+    return;
+  }
+
+  if (!/^\d{4}$/.test(nip)) {
+    res.status(400).json({ mensaje: 'El NIP debe tener exactamente 4 dígitos' });
     return;
   }
 
@@ -278,9 +288,11 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    const nipHash = await bcrypt.hash(nip, 10);
+
     const [result]: any = await pool.query(
-      'INSERT INTO tarjetas (usuario_id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.usuario!.id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion]
+      'INSERT INTO tarjetas (usuario_id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.usuario!.id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nipHash]
     );
 
     res.status(201).json({
