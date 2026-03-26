@@ -5,7 +5,7 @@ import pool from '../db/connection';
 
 const router = Router();
 
-const PREFIJOS_DEBITO = ['4030', '4040'];
+const PREFIJOS_DEBITO = ['4040', '4050'];
 
 const PREFIJOS_CREDITO: Record<string, string> = {
   orbe: '4010',
