@@ -97,9 +97,28 @@ router.get('/generar-credito', verificarToken, async (req: AuthRequest, res: Res
       return;
     }
 
+    const prefijo = PREFIJOS_CREDITO[tipo];
+    let numero_tarjeta: string;
+    let intentos = 0;
+
+    do {
+      numero_tarjeta = generarNumero(prefijo);
+      const [existente]: any = await pool.query(
+        'SELECT id FROM tarjetas WHERE numero_tarjeta = ?',
+        [numero_tarjeta]
+      );
+      if (existente.length === 0) break;
+      intentos++;
+    } while (intentos < 10);
+
+    if (intentos >= 10) {
+      res.status(500).json({ mensaje: 'No se pudo generar un número de tarjeta único' });
+      return;
+    }
+
     const tipoDB = tipos[0];
     res.json({
-      numero_tarjeta: generarNumero(PREFIJOS_CREDITO[tipo]),
+      numero_tarjeta,
       cvv: generarCVV(),
       fecha_expiracion: generarFechaExpiracion(),
       tipo_tarjeta_id: tipoDB.id,
@@ -159,7 +178,7 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [cuenta_id, tipo_tarjeta_id, numero_tarjeta]
+ *             required: [cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion]
  *             properties:
  *               cuenta_id:
  *                 type: integer
@@ -168,6 +187,14 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *               numero_tarjeta:
  *                 type: string
  *                 description: 16 dígitos con el prefijo correspondiente al tipo
+ *               cvv:
+ *                 type: string
+ *                 description: 3 dígitos
+ *                 example: "741"
+ *               fecha_expiracion:
+ *                 type: string
+ *                 description: Formato MM/YY
+ *                 example: "03/30"
  *     responses:
  *       201:
  *         description: Tarjeta registrada exitosamente
@@ -179,15 +206,25 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *         description: Número de tarjeta ya registrado
  */
 router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
-  const { cuenta_id, tipo_tarjeta_id, numero_tarjeta } = req.body;
+  const { cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion } = req.body;
 
-  if (!cuenta_id || !tipo_tarjeta_id || !numero_tarjeta) {
-    res.status(400).json({ mensaje: 'cuenta_id, tipo_tarjeta_id y numero_tarjeta son requeridos' });
+  if (!cuenta_id || !tipo_tarjeta_id || !numero_tarjeta || !cvv || !fecha_expiracion) {
+    res.status(400).json({ mensaje: 'cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv y fecha_expiracion son requeridos' });
     return;
   }
 
   if (!/^\d{16}$/.test(numero_tarjeta)) {
     res.status(400).json({ mensaje: 'El número de tarjeta debe tener exactamente 16 dígitos' });
+    return;
+  }
+
+  if (!/^\d{3}$/.test(cvv)) {
+    res.status(400).json({ mensaje: 'El CVV debe tener exactamente 3 dígitos' });
+    return;
+  }
+
+  if (!/^\d{2}\/\d{2}$/.test(fecha_expiracion)) {
+    res.status(400).json({ mensaje: 'La fecha de expiración debe tener formato MM/YY' });
     return;
   }
 
@@ -242,8 +279,8 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
     }
 
     const [result]: any = await pool.query(
-      'INSERT INTO tarjetas (usuario_id, cuenta_id, tipo_tarjeta_id, numero_tarjeta) VALUES (?, ?, ?, ?)',
-      [req.usuario!.id, cuenta_id, tipo_tarjeta_id, numero_tarjeta]
+      'INSERT INTO tarjetas (usuario_id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.usuario!.id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion]
     );
 
     res.status(201).json({
