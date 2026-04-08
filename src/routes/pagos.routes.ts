@@ -44,8 +44,15 @@ router.post('/cobrar', async (req: Request, res: Response) => {
   try {
     await conn.beginTransaction();
 
+    // Buscar cuenta y su tarjeta vinculada para determinar categoría
     const [rows]: any = await conn.query(
-      'SELECT * FROM cuentas WHERE numero_cuenta = ? AND estado = "activa" FOR UPDATE',
+      `SELECT c.*, t.id AS tarjeta_id, t.saldo AS tarjeta_saldo,
+              tt.categoria, tt.limite_credito AS tarjeta_limite
+       FROM cuentas c
+       JOIN tarjetas t ON t.cuenta_id = c.id
+       JOIN tipos_tarjeta tt ON t.tipo_tarjeta_id = tt.id
+       WHERE c.numero_cuenta = ? AND c.estado = 'activa'
+       LIMIT 1 FOR UPDATE`,
       [numero_cuenta]
     );
 
@@ -55,22 +62,20 @@ router.post('/cobrar', async (req: Request, res: Response) => {
     }
 
     const cuenta = rows[0];
-    const esTarjetaCredito = ['orbe', 'silverstone', 'imperium'].includes(cuenta.tipo);
+    const esTarjetaCredito = cuenta.categoria === 'credito';
 
     if (esTarjetaCredito) {
-      // Para tarjetas de crédito: saldo = deuda acumulada, limite_credito = tope
-      // Imperium (limite_credito NULL) no tiene restriccion
-      if (cuenta.limite_credito !== null) {
-        const deudaActual = Number(cuenta.saldo);
-        if (deudaActual + monto > Number(cuenta.limite_credito)) {
-          res.status(400).json({ mensaje: 'Limite de credito insuficiente', credito_disponible: Number(cuenta.limite_credito) - deudaActual });
+      // Crédito: saldo vive en tarjetas.saldo (deuda acumulada)
+      if (cuenta.tarjeta_limite !== null) {
+        const deudaActual = Number(cuenta.tarjeta_saldo);
+        if (deudaActual + monto > Number(cuenta.tarjeta_limite)) {
+          res.status(400).json({ mensaje: 'Limite de credito insuficiente', credito_disponible: Number(cuenta.tarjeta_limite) - deudaActual });
           return;
         }
       }
-      // En tarjeta de crédito el saldo sube (acumula deuda)
-      await conn.query('UPDATE cuentas SET saldo = saldo + ? WHERE id = ?', [monto, cuenta.id]);
+      await conn.query('UPDATE tarjetas SET saldo = saldo + ? WHERE id = ?', [monto, cuenta.tarjeta_id]);
     } else {
-      // Cuenta de débito: saldo debe ser suficiente
+      // Débito: saldo vive en cuentas.saldo
       if (Number(cuenta.saldo) < monto) {
         res.status(400).json({ mensaje: 'Saldo insuficiente' });
         return;
@@ -93,7 +98,7 @@ router.post('/cobrar', async (req: Request, res: Response) => {
     await conn.commit();
 
     const saldoFinal = esTarjetaCredito
-      ? { deuda_actual: Number(cuenta.saldo) + monto, credito_disponible: cuenta.limite_credito !== null ? Number(cuenta.limite_credito) - (Number(cuenta.saldo) + monto) : null }
+      ? { deuda_actual: Number(cuenta.tarjeta_saldo) + monto, credito_disponible: cuenta.tarjeta_limite !== null ? Number(cuenta.tarjeta_limite) - (Number(cuenta.tarjeta_saldo) + monto) : null }
       : { saldo_restante: Number(cuenta.saldo) - monto };
 
     res.json({ mensaje: 'Cobro realizado exitosamente', referencia, ...saldoFinal });

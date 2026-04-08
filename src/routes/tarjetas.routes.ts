@@ -1,5 +1,4 @@
 import { Router, Response } from 'express';
-import bcrypt from 'bcrypt';
 import { verificarToken, AuthRequest } from '../middleware/auth.middleware';
 import pool from '../db/connection';
 
@@ -154,9 +153,19 @@ router.get('/generar-credito', verificarToken, async (req: AuthRequest, res: Res
 router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
   try {
     const [rows]: any = await pool.query(
-      `SELECT t.id, t.numero_tarjeta, t.saldo, t.estado, t.created_at,
+      `SELECT t.id, t.cuenta_id, t.numero_tarjeta, t.cvv, t.nip, t.fecha_expiracion,
+              CASE
+                WHEN tt.categoria = 'debito' THEN c.saldo
+                ELSE t.saldo
+              END AS saldo,
+              t.estado, t.created_at,
               tt.nombre AS tipo, tt.categoria, tt.limite_credito,
-              c.numero_cuenta
+              c.numero_cuenta,
+              CASE
+                WHEN tt.categoria = 'credito' AND tt.limite_credito IS NOT NULL
+                THEN tt.limite_credito - t.saldo
+                ELSE NULL
+              END AS credito_disponible
        FROM tarjetas t
        JOIN tipos_tarjeta tt ON t.tipo_tarjeta_id = tt.id
        JOIN cuentas c ON t.cuenta_id = c.id
@@ -296,11 +305,9 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const nipHash = await bcrypt.hash(nip, 10);
-
     const [result]: any = await pool.query(
       'INSERT INTO tarjetas (usuario_id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [req.usuario!.id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nipHash]
+      [req.usuario!.id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip]
     );
 
     res.status(201).json({

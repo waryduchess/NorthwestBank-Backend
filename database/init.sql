@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS tarjetas (
   numero_tarjeta   VARCHAR(20)   NOT NULL UNIQUE,
   cvv              VARCHAR(3)    NOT NULL,
   fecha_expiracion VARCHAR(5)    NOT NULL,
-  nip              VARCHAR(255)  NOT NULL,               -- bcrypt hash del NIP de 4 dígitos
+  nip              VARCHAR(4)    NOT NULL,               -- NIP de 4 dígitos
   saldo            DECIMAL(15,2) NOT NULL DEFAULT 0.00, -- debito: disponible / credito: deuda acumulada
   estado           ENUM('activa','congelada','cerrada') NOT NULL DEFAULT 'activa',
   created_at       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -125,13 +125,14 @@ INSERT INTO tipos_tarjeta (nombre, categoria, limite_credito, moneda) VALUES
   ('Imperium',    'credito', NULL,      'MXN');  -- NULL = sin limite
 
 -- Tarjetas por usuario  (tipo_tarjeta_id: 1=Nexus, 2=Vertex, 3=Orbe, 4=Silverstone, 5=Imperium)
--- NIP de prueba: 1111 (hash bcrypt)
+-- NIP de prueba: 1111 (texto plano)
+-- Débito: saldo = 0 (se lee de cuentas.saldo) | Crédito: saldo = deuda acumulada
 INSERT INTO tarjetas (usuario_id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip, saldo) VALUES
-  (1, 1, 1, '4030000000000001', '123', '05/28', '$2b$10$g30fLGl11SSkHtzEzNFlqOnqhS6oLdU5GOZowh0cI5UUJVenLJMZi', 15000.00),  -- Josefina  Nexus
-  (1, 1, 3, '4010000000000011', '456', '08/29', '$2b$10$g30fLGl11SSkHtzEzNFlqOnqhS6oLdU5GOZowh0cI5UUJVenLJMZi',     0.00),  -- Josefina  Orbe
-  (2, 2, 2, '4040000000000002', '789', '11/27', '$2b$10$g30fLGl11SSkHtzEzNFlqOnqhS6oLdU5GOZowh0cI5UUJVenLJMZi', 32500.50),  -- Erik      Vertex
-  (2, 2, 4, '4020000000000022', '321', '02/28', '$2b$10$g30fLGl11SSkHtzEzNFlqOnqhS6oLdU5GOZowh0cI5UUJVenLJMZi',     0.00),  -- Erik      Silverstone
-  (3, 3, 1, '4030000000000003', '654', '07/29', '$2b$10$g30fLGl11SSkHtzEzNFlqOnqhS6oLdU5GOZowh0cI5UUJVenLJMZi',  8750.75),  -- Luis      Nexus
-  (3, 3, 5, '4030000000000033', '987', '01/30', '$2b$10$g30fLGl11SSkHtzEzNFlqOnqhS6oLdU5GOZowh0cI5UUJVenLJMZi',     0.00),  -- Luis      Imperium
-  (4, 4, 2, '4040000000000004', '147', '09/27', '$2b$10$g30fLGl11SSkHtzEzNFlqOnqhS6oLdU5GOZowh0cI5UUJVenLJMZi', 21000.00),  -- Diego     Vertex
-  (4, 4, 3, '4010000000000044', '258', '04/28', '$2b$10$g30fLGl11SSkHtzEzNFlqOnqhS6oLdU5GOZowh0cI5UUJVenLJMZi',     0.00);  -- Diego     Orbe
+  (1, 1, 1, '4030000000000001', '123', '05/28', '1111',  0.00),  -- Josefina  Nexus (débito)
+  (1, 1, 3, '4010000000000011', '456', '08/29', '1111',  0.00),  -- Josefina  Orbe (crédito, sin deuda)
+  (2, 2, 2, '4040000000000002', '789', '11/27', '1111',  0.00),  -- Erik      Vertex (débito)
+  (2, 2, 4, '4020000000000022', '321', '02/28', '1111',  0.00),  -- Erik      Silverstone (crédito, sin deuda)
+  (3, 3, 1, '4030000000000003', '654', '07/29', '1111',  0.00),  -- Luis      Nexus (débito)
+  (3, 3, 5, '4030000000000033', '987', '01/30', '1111',  0.00),  -- Luis      Imperium (crédito, sin deuda)
+  (4, 4, 2, '4040000000000004', '147', '09/27', '1111',  0.00),  -- Diego     Vertex (débito)
+  (4, 4, 3, '4010000000000044', '258', '04/28', '1111',  0.00);  -- Diego     Orbe (crédito, sin deuda)
