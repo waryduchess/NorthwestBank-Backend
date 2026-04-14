@@ -66,10 +66,10 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *         description: Saldo insuficiente o datos invalidos
  */
 router.post('/transferir', verificarToken, async (req: AuthRequest, res: Response) => {
-  const { cuenta_origen_id, numero_cuenta_destino, monto, descripcion } = req.body;
+  const { cuenta_origen_id, numero_cuenta_destino, numero_tarjeta_destino, monto, descripcion } = req.body;
 
-  if (!cuenta_origen_id || !numero_cuenta_destino || !monto || monto <= 0) {
-    res.status(400).json({ mensaje: 'Datos invalidos' });
+  if (!cuenta_origen_id || (!numero_cuenta_destino && !numero_tarjeta_destino) || !monto || monto <= 0) {
+    res.status(400).json({ mensaje: 'Se requiere cuenta_origen_id, monto y numero_cuenta_destino o numero_tarjeta_destino' });
     return;
   }
 
@@ -92,18 +92,49 @@ router.post('/transferir', verificarToken, async (req: AuthRequest, res: Respons
       return;
     }
 
-    const [destino]: any = await conn.query(
-      'SELECT * FROM cuentas WHERE numero_cuenta = ? AND estado = "activa"',
-      [numero_cuenta_destino]
-    );
+    // Resolver cuenta destino por número de tarjeta o número de cuenta
+    let destino: any[];
+    let destinoTarjeta: any = null;
+
+    if (numero_tarjeta_destino) {
+      const [rows]: any = await conn.query(
+        `SELECT c.*, t.id AS tarjeta_id, t.saldo AS tarjeta_saldo, tt.categoria
+         FROM cuentas c
+         JOIN tarjetas t ON t.cuenta_id = c.id
+         JOIN tipos_tarjeta tt ON tt.id = t.tipo_tarjeta_id
+         WHERE t.numero_tarjeta = ? AND c.estado = 'activa'`,
+        [numero_tarjeta_destino]
+      );
+      destino = rows;
+      if (rows.length > 0) destinoTarjeta = rows[0];
+    } else {
+      const [rows]: any = await conn.query(
+        'SELECT * FROM cuentas WHERE numero_cuenta = ? AND estado = "activa"',
+        [numero_cuenta_destino]
+      );
+      destino = rows;
+    }
 
     if (destino.length === 0) {
-      res.status(404).json({ mensaje: 'Cuenta destino no encontrada' });
+      res.status(404).json({ mensaje: 'Tarjeta o cuenta destino no encontrada' });
+      return;
+    }
+
+    // Validar que no se pague más de la deuda en tarjeta de crédito
+    if (destinoTarjeta?.categoria === 'credito' && monto > Number(destinoTarjeta.tarjeta_saldo)) {
+      res.status(400).json({ mensaje: `El monto supera la deuda actual de la tarjeta ($${Number(destinoTarjeta.tarjeta_saldo).toFixed(2)})` });
       return;
     }
 
     await conn.query('UPDATE cuentas SET saldo = saldo - ? WHERE id = ?', [monto, cuenta_origen_id]);
-    await conn.query('UPDATE cuentas SET saldo = saldo + ? WHERE id = ?', [monto, destino[0].id]);
+
+    if (destinoTarjeta?.categoria === 'credito') {
+      // Pago de tarjeta de crédito: reduce la deuda
+      await conn.query('UPDATE tarjetas SET saldo = saldo - ? WHERE id = ?', [monto, destinoTarjeta.tarjeta_id]);
+    } else {
+      // Transferencia a cuenta o tarjeta débito: suma al saldo de la cuenta
+      await conn.query('UPDATE cuentas SET saldo = saldo + ? WHERE id = ?', [monto, destino[0].id]);
+    }
 
     const referencia = uuidv4().replace(/-/g, '').substring(0, 20).toUpperCase();
 
