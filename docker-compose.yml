@@ -51,7 +51,7 @@ services:
       PMA_HOST: mysql
       PMA_PORT: 3306
     ports:
-      - "8080:80"
+      - "8081:80"
 
 volumes:
   mysql_data:
