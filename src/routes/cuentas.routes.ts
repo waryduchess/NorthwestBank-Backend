@@ -4,11 +4,6 @@ import pool from '../db/connection';
 
 const router = Router();
 
-const LIMITES_TARJETA: Record<string, number | null> = {
-  orbe: 50000,
-  silverstone: 150000,
-  imperium: null,
-};
 
 /**
  * @swagger
@@ -25,12 +20,7 @@ const LIMITES_TARJETA: Record<string, number | null> = {
 router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
   try {
     const [rows]: any = await pool.query(
-      `SELECT id, numero_cuenta, tipo, saldo, limite_credito, moneda, estado,
-              CASE
-                WHEN tipo IN ('orbe','silverstone','imperium') AND limite_credito IS NOT NULL
-                THEN limite_credito - saldo
-                ELSE NULL
-              END AS credito_disponible
+      `SELECT id, numero_cuenta, tipo, saldo, moneda, estado
        FROM cuentas WHERE usuario_id = ?`,
       [req.usuario!.id]
     );
@@ -63,12 +53,7 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
 router.get('/:id', verificarToken, async (req: AuthRequest, res: Response) => {
   try {
     const [rows]: any = await pool.query(
-      `SELECT id, numero_cuenta, tipo, saldo, limite_credito, moneda, estado, created_at,
-              CASE
-                WHEN tipo IN ('orbe','silverstone','imperium') AND limite_credito IS NOT NULL
-                THEN limite_credito - saldo
-                ELSE NULL
-              END AS credito_disponible
+      `SELECT id, numero_cuenta, tipo, saldo, moneda, estado, created_at
        FROM cuentas WHERE id = ? AND usuario_id = ?`,
       [req.params['id'], req.usuario!.id]
     );
@@ -102,14 +87,14 @@ router.get('/:id', verificarToken, async (req: AuthRequest, res: Response) => {
  *             properties:
  *               tipo:
  *                 type: string
- *                 enum: [ahorro, corriente, orbe, silverstone, imperium]
+ *                 enum: [ahorro, corriente]
  *     responses:
  *       201:
  *         description: Cuenta creada exitosamente
  */
 router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
   const { tipo } = req.body;
-  const tiposValidos = ['ahorro', 'corriente', 'orbe', 'silverstone', 'imperium'];
+  const tiposValidos = ['ahorro', 'corriente'];
 
   if (!tipo || !tiposValidos.includes(tipo)) {
     res.status(400).json({ mensaje: `Tipo invalido. Opciones: ${tiposValidos.join(', ')}` });
@@ -118,11 +103,10 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
 
   try {
     const numeroCuenta = Date.now().toString().slice(-16).padStart(16, '4');
-    const limiteCredito = LIMITES_TARJETA[tipo] ?? null;
 
     const [result]: any = await pool.query(
-      'INSERT INTO cuentas (usuario_id, numero_cuenta, tipo, limite_credito) VALUES (?, ?, ?, ?)',
-      [req.usuario!.id, numeroCuenta, tipo, limiteCredito]
+      'INSERT INTO cuentas (usuario_id, numero_cuenta, tipo) VALUES (?, ?, ?)',
+      [req.usuario!.id, numeroCuenta, tipo]
     );
 
     res.status(201).json({ mensaje: 'Cuenta creada exitosamente', id: result.insertId, numero_cuenta: numeroCuenta });
