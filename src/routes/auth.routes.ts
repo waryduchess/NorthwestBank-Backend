@@ -39,6 +39,19 @@ const router = Router();
  *       400:
  *         description: Email o telefono ya registrado
  */
+// Genera un número de cuenta único de 16 dígitos con prefijo 3000
+async function generarNumeroCuenta(): Promise<string> {
+  let numero: string;
+  let existe = true;
+  do {
+    const aleatorio = Math.floor(Math.random() * 1_000_000_000_000).toString().padStart(12, '0');
+    numero = `3000${aleatorio}`;
+    const [rows]: any = await pool.query('SELECT id FROM cuentas WHERE numero_cuenta = ?', [numero]);
+    existe = rows.length > 0;
+  } while (existe);
+  return numero;
+}
+
 router.post('/registro', async (req: Request, res: Response) => {
   console.log('Body recibido:', req.body);
   const { nombre, apellido_paterno, apellido_materno, email, telefono, password} = req.body;
@@ -48,22 +61,41 @@ router.post('/registro', async (req: Request, res: Response) => {
     return;
   }
 
+  const conn = await pool.getConnection();
   try {
-    const passwordHash = await bcrypt.hash(password, 10);
-  
+    await conn.beginTransaction();
 
-    const [result]: any = await pool.query(
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const [result]: any = await conn.query(
       'INSERT INTO usuarios (nombre, apellido_paterno, apellido_materno, email, telefono, password_hash, pin) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [nombre, apellido_paterno, apellido_materno, email, telefono, passwordHash, null]
     );
 
-    res.status(201).json({ mensaje: 'Usuario registrado exitosamente', id: result.insertId });
+    const usuarioId = result.insertId;
+    const numeroCuenta = await generarNumeroCuenta();
+
+    await conn.query(
+      'INSERT INTO cuentas (usuario_id, numero_cuenta, tipo, saldo, moneda) VALUES (?, ?, ?, ?, ?)',
+      [usuarioId, numeroCuenta, 'ahorro', 0.00, 'MXN']
+    );
+
+    await conn.commit();
+
+    res.status(201).json({
+      mensaje: 'Usuario registrado exitosamente',
+      id: usuarioId,
+      numero_cuenta: numeroCuenta,
+    });
   } catch (error: any) {
+    await conn.rollback();
     if (error.code === 'ER_DUP_ENTRY') {
       res.status(400).json({ mensaje: 'Email o telefono ya registrado' });
     } else {
       res.status(500).json({ mensaje: 'Error interno del servidor' });
     }
+  } finally {
+    conn.release();
   }
 });
 
