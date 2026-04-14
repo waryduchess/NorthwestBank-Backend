@@ -10,6 +10,7 @@ import cuentasRoutes from './routes/cuentas.routes';
 import transaccionesRoutes from './routes/transacciones.routes';
 import pagosRoutes from './routes/pagos.routes';
 import tarjetasRoutes from './routes/tarjetas.routes';
+import notificacionesRoutes from './routes/notificaciones.routes';
 
 dotenv.config();
 
@@ -49,6 +50,7 @@ app.use('/api/cuentas', cuentasRoutes);
 app.use('/api/transacciones', transaccionesRoutes);
 app.use('/api/pagos', pagosRoutes);
 app.use('/api/tarjetas', tarjetasRoutes);
+app.use('/api/notificaciones', notificacionesRoutes);
 
 app.listen(PORT, () => {
   console.log(`NorthwestBank API corriendo en http://localhost:${PORT}`);
