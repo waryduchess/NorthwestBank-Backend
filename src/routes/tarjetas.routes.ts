@@ -227,11 +227,24 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
  *       409:
  *         description: Número de tarjeta ya registrado
  */
-router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
-  const { cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip } = req.body;
+async function generarNumeroCuenta(conn: any): Promise<string> {
+  let numero: string;
+  let intentos = 0;
+  do {
+    const aleatorio = Math.floor(Math.random() * 1e12).toString().padStart(12, '0');
+    numero = `3000${aleatorio}`;
+    const [rows]: any = await conn.query('SELECT id FROM cuentas WHERE numero_cuenta = ?', [numero]);
+    if (rows.length === 0) break;
+    intentos++;
+  } while (intentos < 10);
+  return numero;
+}
 
-  if (!cuenta_id || !tipo_tarjeta_id || !numero_tarjeta || !cvv || !fecha_expiracion || !nip) {
-    res.status(400).json({ mensaje: 'cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion y nip son requeridos' });
+router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
+  const { tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip } = req.body;
+
+  if (!tipo_tarjeta_id || !numero_tarjeta || !cvv || !fecha_expiracion || !nip) {
+    res.status(400).json({ mensaje: 'tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion y nip son requeridos' });
     return;
   }
 
@@ -255,9 +268,12 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
     return;
   }
 
+  const conn = await pool.getConnection();
   try {
+    await conn.beginTransaction();
+
     // Verificar que el número no esté ya registrado
-    const [existente]: any = await pool.query(
+    const [existente]: any = await conn.query(
       'SELECT id FROM tarjetas WHERE numero_tarjeta = ?',
       [numero_tarjeta]
     );
@@ -267,7 +283,7 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
     }
 
     // Obtener el tipo de tarjeta
-    const [tipos]: any = await pool.query(
+    const [tipos]: any = await conn.query(
       'SELECT id, nombre, categoria FROM tipos_tarjeta WHERE id = ?',
       [tipo_tarjeta_id]
     );
@@ -295,30 +311,36 @@ router.post('/', verificarToken, async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // Verificar que la cuenta pertenece al usuario y está activa
-    const [cuentas]: any = await pool.query(
-      "SELECT id FROM cuentas WHERE id = ? AND usuario_id = ? AND estado = 'activa'",
-      [cuenta_id, req.usuario!.id]
+    // Crear cuenta nueva para esta tarjeta
+    const numeroCuenta = await generarNumeroCuenta(conn);
+    const [cuentaResult]: any = await conn.query(
+      'INSERT INTO cuentas (usuario_id, numero_cuenta, tipo, saldo, moneda) VALUES (?, ?, "ahorro", 0.00, "MXN")',
+      [req.usuario!.id, numeroCuenta]
     );
-    if (cuentas.length === 0) {
-      res.status(404).json({ mensaje: 'Cuenta no encontrada o no está activa' });
-      return;
-    }
+    const nuevaCuentaId = cuentaResult.insertId;
 
-    const [result]: any = await pool.query(
+    // Registrar la tarjeta vinculada a la nueva cuenta
+    const [result]: any = await conn.query(
       'INSERT INTO tarjetas (usuario_id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [req.usuario!.id, cuenta_id, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip]
+      [req.usuario!.id, nuevaCuentaId, tipo_tarjeta_id, numero_tarjeta, cvv, fecha_expiracion, nip]
     );
+
+    await conn.commit();
 
     res.status(201).json({
       mensaje: 'Tarjeta registrada exitosamente',
       id: result.insertId,
       numero_tarjeta,
+      numero_cuenta: numeroCuenta,
       tipo: tipo.nombre,
       categoria: tipo.categoria,
     });
-  } catch {
+  } catch (err) {
+    await conn.rollback();
+    console.error('Error en POST /tarjetas:', err);
     res.status(500).json({ mensaje: 'Error interno del servidor' });
+  } finally {
+    conn.release();
   }
 });
 
