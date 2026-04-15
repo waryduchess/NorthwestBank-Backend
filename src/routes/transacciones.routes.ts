@@ -21,13 +21,23 @@ router.get('/', verificarToken, async (req: AuthRequest, res: Response) => {
   try {
     const [rows]: any = await pool.query(
       `SELECT t.id, t.tipo, t.monto, t.descripcion, t.referencia, t.estado, t.created_at,
-              co.numero_cuenta AS cuenta_origen, cd.numero_cuenta AS cuenta_destino
+              co.numero_cuenta AS cuenta_origen, cd.numero_cuenta AS cuenta_destino,
+              CONCAT(uo.nombre, ' ', uo.apellido_paterno) AS nombre_origen,
+              CONCAT(ud.nombre, ' ', ud.apellido_paterno) AS nombre_destino,
+              CASE
+                WHEN t.tipo = 'deposito' THEN TRUE
+                WHEN t.tipo IN ('retiro', 'compra') THEN FALSE
+                WHEN t.tipo = 'transferencia' AND cd.usuario_id = ? THEN TRUE
+                ELSE FALSE
+              END AS es_ingreso
        FROM transacciones t
        LEFT JOIN cuentas co ON t.cuenta_origen_id = co.id
        LEFT JOIN cuentas cd ON t.cuenta_destino_id = cd.id
+       LEFT JOIN usuarios uo ON co.usuario_id = uo.id
+       LEFT JOIN usuarios ud ON cd.usuario_id = ud.id
        WHERE co.usuario_id = ? OR cd.usuario_id = ?
        ORDER BY t.created_at DESC`,
-      [req.usuario!.id, req.usuario!.id]
+      [req.usuario!.id, req.usuario!.id, req.usuario!.id]
     );
     res.json(rows);
   } catch {
@@ -142,6 +152,20 @@ router.post('/transferir', verificarToken, async (req: AuthRequest, res: Respons
       'INSERT INTO transacciones (cuenta_origen_id, cuenta_destino_id, tipo, monto, descripcion, referencia, estado) VALUES (?, ?, "transferencia", ?, ?, ?, "completada")',
       [cuenta_origen_id, destino[0].id, monto, descripcion || null, referencia]
     );
+
+    // Notificación al emisor
+    await conn.query(
+      'INSERT INTO notificaciones (usuario_id, titulo, mensaje) VALUES (?, "Transferencia realizada", ?)',
+      [req.usuario!.id, `Transferiste $${monto} MXN. Ref: ${referencia}`]
+    );
+
+    // Notificación al receptor (si la cuenta destino pertenece a otro usuario)
+    if (destino[0].usuario_id !== req.usuario!.id) {
+      await conn.query(
+        'INSERT INTO notificaciones (usuario_id, titulo, mensaje) VALUES (?, "Transferencia recibida", ?)',
+        [destino[0].usuario_id, `Recibiste $${monto} MXN. Ref: ${referencia}`]
+      );
+    }
 
     await conn.commit();
     res.json({ mensaje: 'Transferencia realizada exitosamente', referencia });
