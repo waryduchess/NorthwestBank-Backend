@@ -143,6 +143,20 @@ router.post('/transferir', verificarToken, async (req: AuthRequest, res: Respons
       [cuenta_origen_id, destino[0].id, monto, descripcion || null, referencia]
     );
 
+    // Notificación al emisor
+    await conn.query(
+      'INSERT INTO notificaciones (usuario_id, titulo, mensaje) VALUES (?, "Transferencia realizada", ?)',
+      [req.usuario!.id, `Transferiste $${monto} MXN. Ref: ${referencia}`]
+    );
+
+    // Notificación al receptor (si la cuenta destino pertenece a otro usuario)
+    if (destino[0].usuario_id !== req.usuario!.id) {
+      await conn.query(
+        'INSERT INTO notificaciones (usuario_id, titulo, mensaje) VALUES (?, "Transferencia recibida", ?)',
+        [destino[0].usuario_id, `Recibiste $${monto} MXN. Ref: ${referencia}`]
+      );
+    }
+
     await conn.commit();
     res.json({ mensaje: 'Transferencia realizada exitosamente', referencia });
   } catch {
