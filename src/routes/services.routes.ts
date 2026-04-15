@@ -36,7 +36,7 @@ const router = Router();
  *         description: Tarjeta no encontrada
  */
 router.post('/servicio', verificarToken, async (req: AuthRequest, res: Response) => {
-  const { tarjeta_id, monto, descripcion } = req.body;
+  const { tarjeta_id, monto, descripcion, tipo } = req.body;
 
   if (!tarjeta_id || !monto || Number(monto) <= 0) {
     res.status(400).json({ mensaje: 'tarjeta_id y monto son requeridos' });
@@ -88,8 +88,8 @@ router.post('/servicio', verificarToken, async (req: AuthRequest, res: Response)
     const referencia = uuidv4().replace(/-/g, '').substring(0, 20).toUpperCase();
 
     await conn.query(
-      'INSERT INTO transacciones (cuenta_origen_id, tipo, monto, descripcion, referencia, estado) VALUES (?, "servicio", ?, ?, ?, "completada")',
-      [tarjeta.cuenta_id, montoNum, descripcion || 'Pago de servicio', referencia]
+      'INSERT INTO transacciones (cuenta_origen_id, tipo, monto, descripcion, referencia, estado) VALUES (?, ?, ?, ?, ?, "completada")',
+      [tarjeta.cuenta_id, tipo || 'servicio', montoNum, descripcion || 'Pago de servicio', referencia]
     );
 
     await conn.query(
