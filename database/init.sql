@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS transacciones (
   id                 INT           PRIMARY KEY AUTO_INCREMENT,
   cuenta_origen_id   INT           NULL,
   cuenta_destino_id  INT           NULL,
-  tipo               ENUM('transferencia','retiro','compra','deposito') NOT NULL,
+  tipo               ENUM('transferencia','retiro','compra','deposito', 'servicio') NOT NULL,
   monto              DECIMAL(15,2) NOT NULL,
   descripcion        VARCHAR(255)  NULL,
   referencia         VARCHAR(50)   NOT NULL UNIQUE,
